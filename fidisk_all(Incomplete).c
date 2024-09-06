@@ -113,10 +113,8 @@ int main(int argc, char** argv) {
 
         /*Now Let's get the next EBR for next logical partition info:*/
         EBR_ptr++;
-        
-        uint64_t rel_addr_next_EBR = EBR_ptr->lba;              //Relative address of next EBR. STARTS from EXTENDED PARTITION
+        uint64_t rel_addr_next_EBR = EBR_ptr->lba;              //Relative address of next EBR. STARTS from EXTENDED PARTITION!
         /* Let's go to the next EBR and read its data:*/
-        
         off_t new_offset_absolute = (to_extended_lba + rel_addr_next_EBR)*512;
         off_t check_lseek2 = lseek(ext_fd, new_offset_absolute, SEEK_SET);
         if(check_lseek2 == -1) {
@@ -124,20 +122,25 @@ int main(int argc, char** argv) {
             write(2, err_msg, strlen(err_msg));
             exit(EXIT_FAILURE);
         }
-
+        
+        struct PartitionEntry* old_ptr = EBR_ptr;               //NOW AT 2nd ENTRY.
+        
+        int CCount = 0;
+        while(CCount <= 1) {
+        uint64_t rel_addr_next_EBR = old_ptr->lba;          
+        off_t new_offset_absolute = (to_extended_lba + rel_addr_next_EBR)*512;
+        off_t check_lseek2 = lseek(ext_fd, new_offset_absolute, SEEK_SET);
         char ext2_buff[512];
         read(ext_fd, ext2_buff, 512);
-        struct PartitionEntry* ptr2 = (struct PartitionEntry*)&ext2_buff[446];
-        uint64_t rel_lba_first_entry2 = ptr2->lba;                
-
-        uint64_t exact_sectors = EBR_ptr->sector_count - rel_lba_first_entry2;
-        printf("\nSECTORS: %"PRIu64"\n", exact_sectors);
-        uint64_t START_2nd_log = ptr2->lba + to_extended_lba + rel_addr_next_EBR;
-        printf("START: %"PRIu64"\n", START_2nd_log);
-        printf("END: %"PRIu64"\n", START_2nd_log + exact_sectors - 1);
-    }
+        struct PartitionEntry* new_ptr = (struct PartitionEntry*)&ext2_buff[446];
+        uint64_t rel_lba_first_entry_new = new_ptr->lba;
+        uint64_t exact_sectors = old_ptr->sector_count - rel_lba_first_entry_new;
+        uint64_t START = new_ptr->lba + to_extended_lba + rel_addr_next_EBR;
+        printf("START: %"PRIu64"\n", START);
+        printf("SECTORS: %"PRIu64"\n", exact_sectors);
+        printf("END %"PRIu64"\n", START + exact_sectors - 1);
     
-
-    return 0;
-}
-    
+        new_ptr++;
+        old_ptr = new_ptr;
+        CCount++;
+        }
