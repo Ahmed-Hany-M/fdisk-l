@@ -108,12 +108,14 @@ int main(int argc, char** argv) {
         //Start and end calculations
         uint64_t absolute_start_log = to_extended_lba + rel_lba_first_entry;
         uint64_t absolute_end_log = absolute_start_log + no_sectors_first_entry - 1;
-        printf("\n LOGICAL PARTITION INFO:\n");
-        printf("Start: %"PRIu64" ; End: %"PRIu64" ; Sectors: %"PRIu64"\n", absolute_start_log, absolute_end_log, no_sectors_first_entry);
+        
+        printf("%s%-5d            %-10lu %-10lu %-10lu %.1fG       \n", argv[1], extended_partition_index+2,
+			absolute_start_log, absolute_start_log + no_sectors_first_entry - 1, no_sectors_first_entry,
+			(double)no_sectors_first_entry*512/(1024*1024*1024));
 
         /*Now Let's get the next EBR for next logical partition info:*/
         EBR_ptr++;
-        uint64_t rel_addr_next_EBR = EBR_ptr->lba;              //Relative address of next EBR. STARTS from EXTENDED PARTITION!
+        uint64_t rel_addr_next_EBR = EBR_ptr->lba;              //Relative address of next EBR. STARTS from EXTENDED PARTITION
         /* Let's go to the next EBR and read its data:*/
         off_t new_offset_absolute = (to_extended_lba + rel_addr_next_EBR)*512;
         off_t check_lseek2 = lseek(ext_fd, new_offset_absolute, SEEK_SET);
@@ -126,21 +128,44 @@ int main(int argc, char** argv) {
         struct PartitionEntry* old_ptr = EBR_ptr;               //NOW AT 2nd ENTRY.
         
         int CCount = 0;
-        while(CCount <= 1) {
-        uint64_t rel_addr_next_EBR = old_ptr->lba;          
-        off_t new_offset_absolute = (to_extended_lba + rel_addr_next_EBR)*512;
-        off_t check_lseek2 = lseek(ext_fd, new_offset_absolute, SEEK_SET);
-        char ext2_buff[512];
-        read(ext_fd, ext2_buff, 512);
-        struct PartitionEntry* new_ptr = (struct PartitionEntry*)&ext2_buff[446];
-        uint64_t rel_lba_first_entry_new = new_ptr->lba;
-        uint64_t exact_sectors = old_ptr->sector_count - rel_lba_first_entry_new;
-        uint64_t START = new_ptr->lba + to_extended_lba + rel_addr_next_EBR;
-        printf("START: %"PRIu64"\n", START);
-        printf("SECTORS: %"PRIu64"\n", exact_sectors);
-        printf("END %"PRIu64"\n", START + exact_sectors - 1);
+        while(1) {
+            uint64_t rel_addr_next_EBR = old_ptr->lba;          
+            off_t new_offset_absolute = (to_extended_lba + rel_addr_next_EBR)*512;
+            off_t check_lseek2 = lseek(ext_fd, new_offset_absolute, SEEK_SET);
+            if(check_lseek2 == -1) {
+                char* err_msg = "lseek failed.\n";
+                write(2, err_msg, strlen(err_msg));
+                exit(EXIT_FAILURE);
+            }
+
+            char ext2_buff[512];
+            ssize_t check_read = read(ext_fd, ext2_buff, 512);
+            if(check_read == -1) {
+                char* err_msg = "Reading file descriptor.\n";
+                write(2, err_msg, strlen(err_msg));
+                exit(EXIT_FAILURE);
+            }
+
+            struct PartitionEntry* new_ptr = (struct PartitionEntry*)&ext2_buff[446];
+            uint64_t rel_lba_first_entry_new = new_ptr->lba;
+            uint64_t exact_sectors = old_ptr->sector_count - rel_lba_first_entry_new;
+            uint64_t START = new_ptr->lba + to_extended_lba + rel_addr_next_EBR;
     
-        new_ptr++;
-        old_ptr = new_ptr;
-        CCount++;
+            printf("%s%-5d            %-10lu %-10lu %-10lu %.1fG       \n", argv[1], extended_partition_index+3+CCount,
+			    START, START + exact_sectors - 1, exact_sectors, 
+			    (double)exact_sectors*512/(1024*1024*1024));
+            new_ptr++;
+            old_ptr = new_ptr;
+            CCount++;
+
+            if(old_ptr->sector_count == 0) 
+                exit(EXIT_SUCCESS);
+            
         }
+
+    }
+    
+
+    return 0;
+}
+    
