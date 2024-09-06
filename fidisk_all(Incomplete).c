@@ -16,16 +16,6 @@ struct PartitionEntry {
     uint32_t lba;
     uint32_t sector_count;
 };
-/*
-struct EBR {
-    uint8_t boot_region[446];
-    struct PartitionEntry first_entry;              
-    struct PartitionEntry second_entry;
-    struct PartitionEntry third_entry;              //Typically Empty.
-    struct PartitionEntry fourth_entry;             //Typically Empty.
-    uint8_t magic_region[2];       
-};
-*/
 
 int main(int argc, char** argv) {
     if(argc < 2) {                                  /* Ensuring that the users enters at least 2 arguments.*/
@@ -92,7 +82,7 @@ int main(int argc, char** argv) {
             exit(EXIT_FAILURE);
         }
         off_t to_extended_lba_bytes = table_entry_ptr[extended_partition_index].lba*512;
-        long unsigned int to_extended_lba = table_entry_ptr[extended_partition_index].lba;
+        uint64_t to_extended_lba = table_entry_ptr[extended_partition_index].lba;
 
         off_t check_lseek = lseek(ext_fd, to_extended_lba_bytes, SEEK_SET);
         if(check_lseek == -1) {
@@ -112,34 +102,39 @@ int main(int argc, char** argv) {
         struct PartitionEntry* EBR_ptr = (struct PartitionEntry*)&ext_buff[446];
 
         /* First Entry of this EBR:*/
-        long unsigned int rel_lba_first_entry = EBR_ptr->lba;
-        long unsigned int no_sectors_first_entry = EBR_ptr->sector_count;
+        uint64_t rel_lba_first_entry = EBR_ptr->lba;
+        uint64_t no_sectors_first_entry = EBR_ptr->sector_count;
 
         //Start and end calculations
-        long unsigned int absolute_start_first_ebr_lba = rel_lba_first_entry + to_extended_lba;
-        long unsigned int absolute_end_first_ebr_lba = absolute_start_first_ebr_lba + no_sectors_first_entry - 1;
-        printf("\n FIRST LOGICAL PARTITION INFO:\n");
-        printf("Start: %lu ; End: %lu ; Sectors: %lu", absolute_start_first_ebr_lba, absolute_end_first_ebr_lba, no_sectors_first_entry);
+        uint64_t absolute_start_log = to_extended_lba + rel_lba_first_entry;
+        uint64_t absolute_end_log = absolute_start_log + no_sectors_first_entry - 1;
+        printf("\n LOGICAL PARTITION INFO:\n");
+        printf("Start: %"PRIu64" ; End: %"PRIu64" ; Sectors: %"PRIu64"\n", absolute_start_log, absolute_end_log, no_sectors_first_entry);
 
-        /*Now Let's get the next EBR and logical partition info:*/
+        /*Now Let's get the next EBR for next logical partition info:*/
         EBR_ptr++;
         
-        long unsigned int rel_addr_next_EBR = EBR_ptr->lba;
+        uint64_t rel_addr_next_EBR = EBR_ptr->lba;              //Relative address of next EBR. STARTS from EXTENDED PARTITION
         /* Let's go to the next EBR and read its data:*/
-        int fdd = open(argv[1], O_RDONLY);
-        long unsigned int abs_lba_next_ebr = table_entry_ptr[extended_partition_index].lba + rel_addr_next_EBR;
-        off_t snd_offset = abs_lba_next_ebr*512;
-        lseek(fdd, snd_offset, SEEK_SET);
-        char ext2_buff[512];
-        read(fdd, ext2_buff, 512);
-        struct PartitionEntry* ptr2 = (struct PartitionEntry*)&ext2_buff[446];
-        long unsigned int rel_lba_first_entry2 = ptr2->lba;
+        
+        off_t new_offset_absolute = (to_extended_lba + rel_addr_next_EBR)*512;
+        off_t check_lseek2 = lseek(ext_fd, new_offset_absolute, SEEK_SET);
+        if(check_lseek2 == -1) {
+            char* err_msg = "lseek failed.\n";
+            write(2, err_msg, strlen(err_msg));
+            exit(EXIT_FAILURE);
+        }
 
-        long unsigned int exact_sectors = EBR_ptr->sector_count - rel_lba_first_entry2;
-        printf("\nSECTORS: %lu\n", exact_sectors);
-        long unsigned int START_2nd_log = ptr2->lba + abs_lba_next_ebr;
-        printf("START: %lu\n", START_2nd_log);
-        printf("END: %lu\n", START_2nd_log + exact_sectors -1);
+        char ext2_buff[512];
+        read(ext_fd, ext2_buff, 512);
+        struct PartitionEntry* ptr2 = (struct PartitionEntry*)&ext2_buff[446];
+        uint64_t rel_lba_first_entry2 = ptr2->lba;                
+
+        uint64_t exact_sectors = EBR_ptr->sector_count - rel_lba_first_entry2;
+        printf("\nSECTORS: %"PRIu64"\n", exact_sectors);
+        uint64_t START_2nd_log = ptr2->lba + to_extended_lba + rel_addr_next_EBR;
+        printf("START: %"PRIu64"\n", START_2nd_log);
+        printf("END: %"PRIu64"\n", START_2nd_log + exact_sectors - 1);
     }
     
 
